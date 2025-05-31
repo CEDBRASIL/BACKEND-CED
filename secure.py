@@ -26,6 +26,7 @@ def obter_token_unidade() -> str:
     if r.ok and r.json().get("status") == "true":
         token = r.json()["data"]["token"]
         return token
+    
 
     raise RuntimeError(f"Falha ao obter token da unidade: HTTP {r.status_code}")
 
