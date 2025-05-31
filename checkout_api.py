@@ -61,22 +61,21 @@ async def gerar_link_pagamento(dados: CheckoutIn):
             "transaction_amount": VALOR_ASSINATURA / 100,
             "currency_id": "BRL",
             "start_date": "2025-06-01T00:00:00.000-03:00",
-            "end_date": "2026-06-01T00:00:00.000-03:00",
-            "payer_email": dados.email  # Certificando que o email está presente
+            "end_date": "2026-06-01T00:00:00.000-03:00"
         },
         "back_url": URL_SUCCESS,
         "reason": item_title,
         "external_reference": "CED-ASSINATURA",
         "payer": {
             "name": dados.nome,
-            "email": dados.email,  # Incluindo email no objeto payer
+            "email": dados.email,  # Corrigindo para incluir o email no objeto payer
             "phone": {"number": dados.whatsapp}
         },
         "notification_url": NOTIF_URL,
     }
 
-    # Adicionando log detalhado do payload antes de enviar a requisição
-    send_discord_log(f"Payload para criar assinatura: {json.dumps(pref, indent=2)}")
+    # Adicionando log detalhado do payload corrigido
+    send_discord_log(f"Payload corrigido para criar assinatura: {json.dumps(pref, indent=2)}")
 
     async with httpx.AsyncClient(http2=True, timeout=20) as client:
         r = await client.post(f"{MP_BASE_URL}/preapproval", json=pref, headers=headers)
