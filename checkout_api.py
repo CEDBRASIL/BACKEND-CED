@@ -38,10 +38,14 @@ class CheckoutOut(BaseModel):
     mp_link: AnyHttpUrl
 
 
-@router.post("/pay/eeb/checkout", response_model=CheckoutOut)
-async def gerar_link(dados: CheckoutIn):
+@router.post("/pay/eeb/checkout", response_model=CheckoutOut, summary="Gera link de pagamento Mercado Pago")
+async def gerar_link_pagamento(dados: CheckoutIn):
     log.info("Recebendo dados para gerar link de pagamento", dados=dados.dict())
+    send_discord_log(f"Recebendo dados para gerar link de pagamento: {json.dumps(dados.dict(), indent=2)}")
+
     if not dados.cursos:
+        log.error("Nenhum curso selecionado")
+        send_discord_log("Erro: Nenhum curso selecionado")
         raise HTTPException(400, "Selecione ao menos um curso")
 
     headers = {
@@ -49,39 +53,38 @@ async def gerar_link(dados: CheckoutIn):
         "Content-Type": "application/json",
     }
 
+    item_title = "Assinatura CED – Cursos: " + ", ".join(dados.cursos)
     pref = {
-        "items": [{
-            "title": "Assinatura CED – " + ", ".join(dados.cursos),
-            "quantity": 1,
-            "unit_price": VALOR_ASSINATURA / 100,
+        "auto_recurring": {
+            "frequency": 1,
+            "frequency_type": "months",
+            "transaction_amount": VALOR_ASSINATURA / 100,
             "currency_id": "BRL",
-        }],
+            "start_date": "2025-06-01T00:00:00.000-03:00",
+            "end_date": "2026-06-01T00:00:00.000-03:00",
+            "payer_email": dados.email
+        },
+        "back_url": URL_SUCCESS,
+        "reason": item_title,
+        "external_reference": "CED-ASSINATURA",
         "payer": {
             "name": dados.nome,
             "email": dados.email,
-            "phone": {"number": dados.whatsapp},
+            "phone": {"number": dados.whatsapp}
         },
-        "back_urls": {
-            "success": URL_SUCCESS,
-            "failure": URL_FAILURE,
-            "pending": URL_FAILURE,
-        },
-        "auto_return": "approved",
         "notification_url": NOTIF_URL,
-        "metadata": {
-            "nome": dados.nome,
-            "email": dados.email,
-            "whatsapp": dados.whatsapp,
-            "cursos": ",".join(dados.cursos),
-        },
     }
 
     async with httpx.AsyncClient(http2=True, timeout=20) as client:
-        r = await client.post(f"{MP_BASE_URL}/checkout/preferences", json=pref, headers=headers)
+        r = await client.post(f"{MP_BASE_URL}/preapproval", json=pref, headers=headers)
         if r.status_code != 201:
-            log.error("MP erro", status=r.status_code, body=r.text)
-            raise HTTPException(502, "Falha ao criar preferência de pagamento")
-        return {"mp_link": r.json()["init_point"]}
+            log.error("Erro ao criar assinatura no Mercado Pago", status=r.status_code, body=r.text)
+            send_discord_log(f"Erro ao criar assinatura no Mercado Pago: {r.text}")
+            raise HTTPException(500, "Erro ao criar assinatura no Mercado Pago")
+        link = r.json().get("init_point")
+        log.info("Assinatura criada com sucesso", link=link)
+        send_discord_log(f"Assinatura criada com sucesso: {link}")
+        return {"mp_link": link}
 
 
 def send_discord_log(message: str):

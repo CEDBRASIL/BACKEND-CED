@@ -45,39 +45,39 @@ async def webhook_mp(evento: dict, request: Request):
     log.info("Recebendo evento do Mercado Pago", evento=evento)
     send_discord_log(f"Evento recebido: {json.dumps(evento, indent=2)}")
 
-    if evento.get("type") != "payment":
-        log.info("Evento ignorado por não ser do tipo 'payment'", tipo=evento.get("type"))
+    if evento.get("type") != "preapproval":
+        log.info("Evento ignorado por não ser do tipo 'preapproval'", tipo=evento.get("type"))
         send_discord_log(f"Evento ignorado: {evento.get('type')}")
         return {"msg": "evento ignorado"}
 
-    payment_id = evento.get("data", {}).get("id")
-    if not payment_id:
-        log.error("ID do pagamento ausente no evento", evento=evento)
-        send_discord_log("Erro: ID do pagamento ausente no evento")
-        raise HTTPException(400, "ID do pagamento ausente no evento")
+    preapproval_id = evento.get("data", {}).get("id")
+    if not preapproval_id:
+        log.error("ID da assinatura ausente no evento", evento=evento)
+        send_discord_log("Erro: ID da assinatura ausente no evento")
+        raise HTTPException(400, "ID da assinatura ausente no evento")
 
-    # Consulta os dados do pagamento
-    log.info("Consultando dados do pagamento", payment_id=payment_id)
-    send_discord_log(f"Consultando pagamento: {payment_id}")
+    # Consulta os dados da assinatura
+    log.info("Consultando dados da assinatura", preapproval_id=preapproval_id)
+    send_discord_log(f"Consultando assinatura: {preapproval_id}")
     async with httpx.AsyncClient(http2=True) as client:
-        resp = await retry_request(client.get, retries=3, delay=2, url=f"{MP_BASE_URL}/v1/payments/{payment_id}", headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"})
+        resp = await retry_request(client.get, retries=3, delay=2, url=f"{MP_BASE_URL}/preapproval/{preapproval_id}", headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"})
         if resp.status_code != 200:
-            log.error("Pagamento não encontrado", id=payment_id, status=resp.status_code, body=resp.text)
-            send_discord_log(f"Erro ao consultar pagamento: {resp.text}")
-            raise HTTPException(400, "Pagamento não encontrado")
-        pay = resp.json()
+            log.error("Assinatura não encontrada", id=preapproval_id, status=resp.status_code, body=resp.text)
+            send_discord_log(f"Erro ao consultar assinatura: {resp.text}")
+            raise HTTPException(400, "Assinatura não encontrada")
+        preapproval = resp.json()
 
-    log.info("Dados do pagamento recebidos", pagamento=pay)
-    send_discord_log(f"Dados do pagamento: {json.dumps(pay, indent=2)}")
+    log.info("Dados da assinatura recebidos", assinatura=preapproval)
+    send_discord_log(f"Dados da assinatura: {json.dumps(preapproval, indent=2)}")
 
-    # Ignora pagamentos não aprovados
-    if pay.get("status") != "approved":
-        log.info("Pagamento não aprovado", status=pay.get("status"), id=payment_id)
-        send_discord_log(f"Pagamento não aprovado: {pay.get('status')}\n{json.dumps(pay, indent=2)}")
-        return {"msg": "Pagamento não aprovado"}
+    # Ignora assinaturas não aprovadas
+    if preapproval.get("status") != "authorized":
+        log.info("Assinatura não autorizada", status=preapproval.get("status"), id=preapproval_id)
+        send_discord_log(f"Assinatura não autorizada: {preapproval.get('status')}\n{json.dumps(preapproval, indent=2)}")
+        return {"msg": "Assinatura não autorizada"}
 
     # Extrai os dados salvos no metadata
-    meta = pay.get("metadata", {})
+    meta = preapproval.get("metadata", {})
     payload = {
         "nome":     meta.get("nome"),
         "email":    meta.get("email"),
