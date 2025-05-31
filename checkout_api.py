@@ -14,7 +14,7 @@ MP_BASE_URL = "https://api.mercadopago.com"
 VALOR_ASSINATURA = 4990          # R$49,90 (centavos)
 URL_SUCCESS = "https://www.cedbrasilia.com.br/obrigado"
 URL_FAILURE = "https://www.cedbrasilia.com.br/NAN"
-NOTIF_URL = "https://api.cedbrasilia.com.br/webhook/mp"
+NOTIF_URL = "https://www.cedbrasilia.com.br/webhook/webhook_mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
 
