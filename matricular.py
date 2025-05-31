@@ -6,6 +6,7 @@ from typing import List, Tuple, Optional
 import requests
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
+from cursos import CURSOS_OM  # Importa o dicionário de mapeamento
 
 router = APIRouter()
 
@@ -166,39 +167,66 @@ def _cadastrar_aluno_om(
     return aluno_id, cpf
 
 
-@router.post("/", summary="Cadastra (e opcionalmente matricula) um aluno na OM")
+@router.post("/", summary="Cadastra (e opcionalmente matricula) um aluno na OM a partir do nome dos cursos")
 async def realizar_matricula(dados: dict):
     """
     Espera um JSON com:
       - nome: str (obrigatório)
       - whatsapp: str (obrigatório)
       - email: str (opcional)
-      - cursos_ids: List[int] (opcional)
+      - cursos: List[str] (opcional, nomes dos cursos conforme mapeamento em cursos.py)
+      - cursos_ids: List[int] (opcional, IDs diretos, caso queira forçar)
 
     Exemplos de body:
+
+    Somente nome e WhatsApp:
     {
       "nome": "Maria Silva",
       "whatsapp": "61988887777"
     }
-    ou
+
+    Com nomes de cursos:
     {
       "nome": "Maria Silva",
       "whatsapp": "61988887777",
-      "email": "maria@exemplo.com",
+      "cursos": ["Administração", "Pacote Office"]
+    }
+
+    Com IDs diretos (prioritário sobre "cursos"):
+    {
+      "nome": "Maria Silva",
+      "whatsapp": "61988887777",
       "cursos_ids": [129, 198, 156, 154]
     }
     """
     nome = dados.get("nome")
     whatsapp = dados.get("whatsapp")
     email = dados.get("email")
-    cursos_ids = dados.get("cursos_ids") or []
+    cursos_nomes = dados.get("cursos") or []
+    cursos_ids_input = dados.get("cursos_ids") or []
 
-    # Somente 'nome' e 'whatsapp' são obrigatórios
+    # Validação: apenas nome e whatsapp obrigatórios
     if not nome or not whatsapp:
         raise HTTPException(
             status_code=400,
             detail="Dados incompletos: 'nome' e 'whatsapp' são obrigatórios."
         )
+
+    # 1) Primeiro transforma "cursos" (nomes) em IDs usando o mapeamento
+    cursos_ids: List[int] = []
+    if cursos_ids_input:
+        # Se o usuário forneceu "cursos_ids" explicitamente, utiliza esses
+        cursos_ids = cursos_ids_input
+    else:
+        # Caso contrário, tenta mapear pelos nomes
+        for nome_curso in cursos_nomes:
+            chave = next((k for k in CURSOS_OM if k.lower() == nome_curso.lower()), None)
+            if not chave:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Curso '{nome_curso}' não encontrado no mapeamento."
+                )
+            cursos_ids.extend(CURSOS_OM[chave])
 
     try:
         token_unit = _obter_token_unidade()
