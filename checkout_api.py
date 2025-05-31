@@ -1,27 +1,32 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, constr, HttpUrl
-import httpx, os, structlog
+import httpx
+import os
+import structlog
 
 router = APIRouter()
 log = structlog.get_logger()
 
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
-MP_BASE_URL     = "https://api.mercadopago.com"
+MP_BASE_URL = "https://api.mercadopago.com"
 
 VALOR_ASSINATURA = 4990          # R$49,90 (centavos)
-URL_SUCCESS      = "https://www.cedbrasilia.com.br/obrigado"
-URL_FAILURE      = "https://www.cedbrasilia.com.br/NAN"
-NOTIF_URL        = "https://api.cedbrasilia.com.br/webhook/mp"
-MATRICULAR_URL   = "https://www.cedbrasilia.com.br/matricular"
+URL_SUCCESS = "https://www.cedbrasilia.com.br/obrigado"
+URL_FAILURE = "https://www.cedbrasilia.com.br/NAN"
+NOTIF_URL = "https://api.cedbrasilia.com.br/webhook/mp"
+MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
+
 
 class CheckoutIn(BaseModel):
-    nome:     constr(min_length=3, strip_whitespace=True)
-    email:    EmailStr
-    whatsapp: onstr(pattern=r"^\d{10,11}$")
-    cursos:   list[str]
+    nome: constr(min_length=3, strip_whitespace=True)
+    email: EmailStr
+    whatsapp: constr(pattern=r"^\d{10,11}$")
+    cursos: list[str]
+
 
 class CheckoutOut(BaseModel):
     mp_link: HttpUrl
+
 
 @router.post("/pay/eeb/checkout", response_model=CheckoutOut)
 async def gerar_link(dados: CheckoutIn):
@@ -30,8 +35,9 @@ async def gerar_link(dados: CheckoutIn):
 
     headers = {
         "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
-        "Content-Type":  "application/json",
+        "Content-Type": "application/json",
     }
+
     pref = {
         "items": [{
             "title": "Assinatura CED – " + ", ".join(dados.cursos),
@@ -40,7 +46,7 @@ async def gerar_link(dados: CheckoutIn):
             "currency_id": "BRL",
         }],
         "payer": {
-            "name":  dados.nome,
+            "name": dados.nome,
             "email": dados.email,
             "phone": {"number": dados.whatsapp},
         },
@@ -52,10 +58,10 @@ async def gerar_link(dados: CheckoutIn):
         "auto_return": "approved",
         "notification_url": NOTIF_URL,
         "metadata": {
-            "nome":     dados.nome,
-            "email":    dados.email,
+            "nome": dados.nome,
+            "email": dados.email,
             "whatsapp": dados.whatsapp,
-            "cursos":   ",".join(dados.cursos),
+            "cursos": ",".join(dados.cursos),
         },
     }
 
@@ -65,6 +71,7 @@ async def gerar_link(dados: CheckoutIn):
             log.error("MP erro", status=r.status_code, body=r.text)
             raise HTTPException(502, "Falha ao criar preferência de pagamento")
         return {"mp_link": r.json()["init_point"]}
+
 
 # ---------- Webhook ----------
 @router.post("/webhook/mp")
@@ -87,10 +94,10 @@ async def webhook_mp(evento: dict):
 
     meta = pay.get("metadata", {})
     payload = {
-        "nome":     meta.get("nome"),
-        "email":    meta.get("email"),
+        "nome": meta.get("nome"),
+        "email": meta.get("email"),
         "whatsapp": meta.get("whatsapp"),
-        "cursos":   [c.strip() for c in meta.get("cursos", "").split(",") if c.strip()],
+        "cursos": [c.strip() for c in meta.get("cursos", "").split(",") if c.strip()],
     }
 
     async with httpx.AsyncClient(http2=True, timeout=15) as client:
