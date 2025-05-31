@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
 import structlog
 
 from cursos import router as cursos_router
@@ -28,3 +29,10 @@ app.include_router(checkout_router, tags=["Checkout"])
 @app.get("/")
 async def root():
     return {"status": "online"}
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Recebendo requisição: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Resposta: {response.status_code}")
+    return response
