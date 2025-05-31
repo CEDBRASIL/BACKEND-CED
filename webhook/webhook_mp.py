@@ -162,8 +162,8 @@ async def create_subscription(payload):
         response = await retry_request(client.post, retries=3, delay=2, url=f"{MP_BASE_URL}/preapproval", json=payload, headers=headers)
 
         if response.status_code != 200:
-            log.error("Erro ao criar assinatura no Mercado Pago", status=response.status_code, body=response.text)
-            send_discord_log(f"Erro ao criar assinatura: {response.text}")
+            log.error("Erro ao criar assinatura no Mercado Pago", status=response.status_code, body=response.text, headers=headers, payload=payload)
+            send_discord_log(f"Erro ao criar assinatura: {response.text}\nHeaders: {json.dumps(headers, indent=2)}\nPayload: {json.dumps(payload, indent=2)}")
             raise HTTPException(400, "Erro ao criar assinatura no Mercado Pago")
 
         log.info("Assinatura criada com sucesso", response=response.json())
