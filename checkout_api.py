@@ -16,6 +16,8 @@ URL_SUCCESS = "https://www.cedbrasilia.com.br/obrigado"
 URL_FAILURE = "https://www.cedbrasilia.com.br/NAN"
 NOTIF_URL = "https://www.cedbrasilia.com.br/webhook/webhook_mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
+CHATPRO_TOKEN = os.getenv("CHATPRO_TOKEN")
+CHATPRO_URL = os.getenv("CHATPRO_URL")
 
 
 NomeConstrained = Annotated[str, Field(min_length=3, strip_whitespace=True)]
@@ -81,12 +83,17 @@ async def gerar_link(dados: CheckoutIn):
 
 @router.post("/webhook/mp")
 async def webhook_mp(evento: dict):
+    """
+    Rota que o Mercado Pago chama quando um pagamento muda de status.
+    Se estiver aprovado, envia os dados do aluno para /matricular e envia mensagem no WhatsApp.
+    """
     if evento.get("type") != "payment":
         return {"msg": "evento ignorado"}
 
     payment_id = evento["data"]["id"]
     headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
 
+    # Consulta os dados do pagamento
     async with httpx.AsyncClient(http2=True) as client:
         resp = await client.get(f"{MP_BASE_URL}/v1/payments/{payment_id}", headers=headers)
         if resp.status_code != 200:
@@ -94,21 +101,59 @@ async def webhook_mp(evento: dict):
             raise HTTPException(400, "Pagamento não encontrado")
         pay = resp.json()
 
+    # Ignora pagamentos não aprovados
     if pay["status"] != "approved":
         return {"msg": "Pagamento não aprovado"}
 
+    # Extrai os dados salvos no metadata
     meta = pay.get("metadata", {})
     payload = {
-        "nome": meta.get("nome"),
-        "email": meta.get("email"),
+        "nome":     meta.get("nome"),
+        "email":    meta.get("email"),
         "whatsapp": meta.get("whatsapp"),
-        "cursos": [c.strip() for c in meta.get("cursos", "").split(",") if c.strip()],
+        "cursos":   [c.strip() for c in meta.get("cursos", "").split(",") if c.strip()],
     }
 
+    # Chama o endpoint de matrícula com os dados do aluno
     async with httpx.AsyncClient(http2=True, timeout=15) as client:
         r = await client.post(MATRICULAR_URL, json=payload)
         if r.status_code >= 300:
             log.error("Falha matrícula", status=r.status_code, body=r.text)
             raise HTTPException(500, "Falha ao matricular aluno")
 
-    return {"msg": "Aluno matriculado com sucesso"}
+    # Envia mensagem de boas-vindas pelo WhatsApp
+    whatsapp_message = f"""👋 Seja bem-vindo(a), {payload['nome']}! 
+
+🔑 Acesso
+Login: 20254158021
+Senha: 123456
+
+📚 Cursos Adquiridos: 
+• " + "\n• ".join(payload['cursos']) + "
+
+🧑‍🏫 Grupo da Escola: https://chat.whatsapp.com/Gzn00RNW15ABBfmTc6FEnP
+
+📱 Acesse pelo seu dispositivo preferido:
+• Android: https://play.google.com/store/apps/details?id=br.com.om.app&hl=pt
+• iOS: https://apps.apple.com/fr/app/meu-app-de-cursos/id1581898914
+• Computador: https://ead.cedbrasilia.com.br/
+
+Caso deseje trocar ou adicionar outros cursos, basta responder a esta mensagem.
+
+Obrigado por escolher a CED Cursos! Estamos aqui para ajudar nos seus objetivos educacionais.
+
+Atenciosamente, Equipe CED"""
+
+    whatsapp_payload = {
+        "number": payload["whatsapp"],
+        "message": whatsapp_message
+    }
+
+    async with httpx.AsyncClient(http2=True, timeout=15) as client:
+        whatsapp_headers = {"Authorization": f"Bearer {CHATPRO_TOKEN}"}
+        whatsapp_resp = await client.post(f"{CHATPRO_URL}/send-message", json=whatsapp_payload, headers=whatsapp_headers)
+        if whatsapp_resp.status_code >= 300:
+            log.error("Falha ao enviar mensagem no WhatsApp", status=whatsapp_resp.status_code, body=whatsapp_resp.text)
+            raise HTTPException(500, "Falha ao enviar mensagem no WhatsApp")
+
+    return {"msg": "Aluno matriculado e mensagem enviada com sucesso"}
