@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
-import httpx, os, structlog, json, time
+import httpx, os, structlog, json, time, asyncio
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -142,3 +142,52 @@ Atenciosamente, Equipe CED"""
     send_discord_log("Mensagem enviada com sucesso no WhatsApp")
 
     return {"msg": "Aluno matriculado e mensagem enviada com sucesso"}
+
+# Ensure the `payer_email` field is correctly placed in the payload for Mercado Pago's subscription API.
+# Add detailed logging to capture the exact payload being sent.
+
+async def create_subscription(payload):
+    """Creates a subscription in Mercado Pago."""
+    # Ensure `payer_email` is included in the payload
+    if 'payer' not in payload:
+        payload['payer'] = {}
+    if 'email' not in payload['payer']:
+        payload['payer']['email'] = payload.get('payer_email', 'default_email@example.com')
+
+    log.info("Criando assinatura no Mercado Pago", payload=payload)
+    send_discord_log(f"Payload enviado para criar assinatura: {json.dumps(payload, indent=2)}")
+
+    async with httpx.AsyncClient(http2=True, timeout=15) as client:
+        headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
+        response = await retry_request(client.post, retries=3, delay=2, url=f"{MP_BASE_URL}/preapproval", json=payload, headers=headers)
+
+        if response.status_code != 200:
+            log.error("Erro ao criar assinatura no Mercado Pago", status=response.status_code, body=response.text)
+            send_discord_log(f"Erro ao criar assinatura: {response.text}")
+            raise HTTPException(400, "Erro ao criar assinatura no Mercado Pago")
+
+        log.info("Assinatura criada com sucesso", response=response.json())
+        send_discord_log(f"Assinatura criada com sucesso: {json.dumps(response.json(), indent=2)}")
+        return response.json()
+
+async def handle_subscription_creation():
+    """Handles the creation of a subscription by calling the create_subscription function."""
+    payload = {
+        "end_date": "2026-06-01T00:00:00.000-03:00",
+        "back_url": "https://www.cedbrasilia.com.br/obrigado",
+        "reason": "Assinatura CED – Cursos: Excel PRO",
+        "external_reference": "CED-ASSINATURA",
+        "payer": {
+            "name": "NOME_DO_CLIENTE",
+            "email": "EMAIL_DO_CLIENTE",
+            "phone": {
+                "number": "TELEFONE_DO_CLIENTE"
+            }
+        },
+        "notification_url": "https://www.cedbrasilia.com.br/webhook/webhook_mp"
+    }
+
+    await create_subscription(payload)
+
+# Call the async function
+asyncio.run(handle_subscription_creation())
