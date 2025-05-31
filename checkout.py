@@ -16,7 +16,7 @@ NOTIF_URL     = "https://cedbrasilia.com.br/webhook/mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
 NomeConstrained = Annotated[str, Field(min_length=3, strip_whitespace=True)]
-WhatsappConstrained = Annotated[str, Field(regex=r"^\d{10,11}$")]
+WhatsappConstrained = Annotated[str, Field(pattern=r"^\d{10,11}$")]
 
 class CheckoutIn(BaseModel):
     nome: NomeConstrained
@@ -29,6 +29,7 @@ class CheckoutOut(BaseModel):
 
 @router.post("/pay/eeb/checkout", response_model=CheckoutOut, summary="Gera link de pagamento Mercado Pago")
 async def gerar_link_pagamento(dados: CheckoutIn):
+    log.info("Recebendo dados para gerar link de pagamento", dados=dados.dict())
     if not dados.cursos:
         raise HTTPException(400, "Selecione ao menos um curso")
 
