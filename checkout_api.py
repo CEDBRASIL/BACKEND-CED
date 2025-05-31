@@ -17,7 +17,7 @@ MATRICULAR_URL   = "https://www.cedbrasilia.com.br/matricular"
 class CheckoutIn(BaseModel):
     nome:     constr(min_length=3, strip_whitespace=True)
     email:    EmailStr
-    whatsapp: constr(regex=r"^\d{10,11}$")
+    whatsapp: onstr(pattern=r"^\d{10,11}$")
     cursos:   list[str]
 
 class CheckoutOut(BaseModel):
