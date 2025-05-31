@@ -33,6 +33,8 @@ async def root():
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(f"Recebendo requisição: {request.method} {request.url}")
+    if request.url.path == "/webhook/mp":
+        logger.info("Webhook Mercado Pago acionado")
     response = await call_next(request)
     logger.info(f"Resposta: {response.status_code}")
     return response
