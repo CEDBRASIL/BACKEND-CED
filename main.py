@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from cursos import router as cursos_router
 from matricular import router as matricular_router
+from secure import router as secure_router
 
 app = FastAPI()
 
@@ -12,5 +13,7 @@ app.include_router(secure_router, prefix="/secure", tags=["Secure"])
 @app.get("/")
 async def root():
     return {"status": "online"}
+
+
 
 
