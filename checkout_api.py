@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, ConstrainedStr, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, AnyHttpUrl
+from typing import Annotated
 import httpx
 import os
 import structlog
@@ -17,13 +18,8 @@ NOTIF_URL = "https://api.cedbrasilia.com.br/webhook/mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
 
-class NomeConstrained(ConstrainedStr):
-    min_length = 3
-    strip_whitespace = True
-
-
-class WhatsappConstrained(ConstrainedStr):
-    regex = r"^\d{10,11}$"
+NomeConstrained = Annotated[str, Field(min_length=3, strip_whitespace=True)]
+WhatsappConstrained = Annotated[str, Field(regex=r"^\d{10,11}$")]
 
 
 class CheckoutIn(BaseModel):
@@ -34,7 +30,7 @@ class CheckoutIn(BaseModel):
 
 
 class CheckoutOut(BaseModel):
-    mp_link: HttpUrl
+    mp_link: AnyHttpUrl
 
 
 @router.post("/pay/eeb/checkout", response_model=CheckoutOut)

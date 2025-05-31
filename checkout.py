@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, ConstrainedStr, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, AnyHttpUrl
+from typing import Annotated
 import httpx, os, structlog
 
 router = APIRouter()
@@ -14,12 +15,8 @@ URL_FAILURE   = "https://www.cedbrasilia.com.br/NAN"
 NOTIF_URL     = "https://cedbrasilia.com.br/webhook/mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
-class NomeConstrained(ConstrainedStr):
-    min_length = 3
-    strip_whitespace = True
-
-class WhatsappConstrained(ConstrainedStr):
-    regex = r"^\d{10,11}$"
+NomeConstrained = Annotated[str, Field(min_length=3, strip_whitespace=True)]
+WhatsappConstrained = Annotated[str, Field(regex=r"^\d{10,11}$")]
 
 class CheckoutIn(BaseModel):
     nome: NomeConstrained
@@ -28,7 +25,7 @@ class CheckoutIn(BaseModel):
     cursos: list[str]
 
 class CheckoutOut(BaseModel):
-    mp_link: HttpUrl
+    mp_link: AnyHttpUrl
 
 @router.post("/pay/eeb/checkout", response_model=CheckoutOut, summary="Gera link de pagamento Mercado Pago")
 async def gerar_link_pagamento(dados: CheckoutIn):
