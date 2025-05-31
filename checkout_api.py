@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, constr, HttpUrl
+from pydantic import BaseModel, EmailStr, ConstrainedStr, HttpUrl
 import httpx
 import os
 import structlog
@@ -17,10 +17,19 @@ NOTIF_URL = "https://api.cedbrasilia.com.br/webhook/mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
 
+class NomeConstrained(ConstrainedStr):
+    min_length = 3
+    strip_whitespace = True
+
+
+class WhatsappConstrained(ConstrainedStr):
+    regex = r"^\d{10,11}$"
+
+
 class CheckoutIn(BaseModel):
-    nome: constr(min_length=3, strip_whitespace=True)
+    nome: NomeConstrained
     email: EmailStr
-    whatsapp: constr(pattern=r"^\d{10,11}$")
+    whatsapp: WhatsappConstrained
     cursos: list[str]
 
 
@@ -73,7 +82,6 @@ async def gerar_link(dados: CheckoutIn):
         return {"mp_link": r.json()["init_point"]}
 
 
-# ---------- Webhook ----------
 @router.post("/webhook/mp")
 async def webhook_mp(evento: dict):
     if evento.get("type") != "payment":

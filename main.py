@@ -11,7 +11,6 @@ logger = structlog.get_logger()
 
 app = FastAPI(title="CED API", version="1.0.0")
 
-# CORS – só o domínio do front-end
 origins = ["https://www.cedbrasilia.com.br"]
 app.add_middleware(
     CORSMiddleware,
@@ -21,11 +20,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rotas
-app.include_router(cursos_router,     prefix="/cursos",     tags=["Cursos"])
+app.include_router(cursos_router, prefix="/cursos", tags=["Cursos"])
 app.include_router(matricular_router, prefix="/matricular", tags=["Matrícula"])
-app.include_router(secure_router,     prefix="/secure",     tags=["Autenticação"])
-app.include_router(checkout_router,                       tags=["Checkout"])
+app.include_router(secure_router, prefix="/secure", tags=["Autenticação"])
+app.include_router(checkout_router, tags=["Checkout"])
 
 @app.get("/")
 async def root():

@@ -1,9 +1,7 @@
+pydantic[email]
 fastapi
-uvicorn[standard]
+uvicorn
+httpx
 python-dotenv
-pydantic
-httpx[http2]
-mercadopago
-requests
 structlog
-python-multipart
+requests

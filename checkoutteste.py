@@ -19,6 +19,8 @@ VALOR_ASSINATURA = 4990
 URL_SUCCESS = "https://www.cedbrasilia.com.br/obrigado"
 URL_FAILURE = "https://www.cedbrasilia.com.br/teste/failure"
 
+MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
+
 @app.get("/pay/eeb/checkoutteste", response_class=HTMLResponse)
 async def form_checkout_teste():
     options_html = ""
