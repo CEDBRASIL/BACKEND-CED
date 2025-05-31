@@ -1,9 +1,4 @@
 fastapi
-uvicorn[standard]
-python-dotenv
-pydantic
-httpx[http2]
-python-multipart
-structlog
-slowapi
-requests   # manter enquanto não migrar totalmente p/ httpx
+uvicorn
+mercadopago
+requests
