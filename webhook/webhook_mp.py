@@ -152,7 +152,7 @@ async def create_subscription(payload):
     if 'payer' not in payload:
         payload['payer'] = {}
     if 'email' not in payload['payer']:
-        payload['payer']['email'] = payload.get('payer_email', 'default_email@example.com')
+        payload['payer']['email'] = payload.get('email')
 
     log.info("Criando assinatura no Mercado Pago", payload=payload)
     send_discord_log(f"Payload enviado para criar assinatura: {json.dumps(payload, indent=2)}")

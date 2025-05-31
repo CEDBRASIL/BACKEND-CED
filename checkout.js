@@ -34,6 +34,15 @@ document.getElementById("matriculaForm").addEventListener("submit", e => {
     return;
   }
 
+  if (!/^[0-9]{10,11}$/.test(whatsapp)) {
+    alert("Por favor, insira um número de WhatsApp válido.");
+    return;
+  }
+
+  const submitButton = document.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Processando...";
+
   fetch(API_BASE + "/pay/eeb/checkout", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -47,5 +56,9 @@ document.getElementById("matriculaForm").addEventListener("submit", e => {
       alert(json.detail || "Falha ao gerar link de pagamento.");
     }
   })
-  .catch(() => alert("Erro de comunicação com o servidor."));
+  .catch(() => alert("Erro de comunicação com o servidor."))
+  .finally(() => {
+    submitButton.disabled = false;
+    submitButton.textContent = "Prosseguir para pagamento";
+  });
 });
