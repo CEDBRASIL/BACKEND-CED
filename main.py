@@ -7,7 +7,10 @@ app = FastAPI()
 # Incluindo os sistemas no app
 app.include_router(cursos_router, prefix="/cursos")
 app.include_router(matricular_router, prefix="/matricular")
+app.include_router(secure_router, prefix="/secure", tags=["cursos"])
 
 @app.get("/")
 async def root():
     return {"status": "online"}
+
+
