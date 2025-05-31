@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException
-import httpx, os, structlog, json
+from fastapi import APIRouter, HTTPException, Request
+import httpx, os, structlog, json, time
 
 router = APIRouter()
 log = structlog.get_logger()
 
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
 MP_BASE_URL     = "https://api.mercadopago.com"
-MATRICULAR_URL  = "https://www.cedbrasilia.com.br/matricular"
+MATRICULAR_URL  = "https://api.cedbrasilia.com.br/matricular"
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+CHATPRO_TOKEN = os.getenv("CHATPRO_TOKEN")
+CHATPRO_URL = os.getenv("CHATPRO_URL")
 
 def send_discord_log(message: str):
     """Envia logs detalhados para o Discord."""
@@ -17,11 +19,28 @@ def send_discord_log(message: str):
     except Exception as e:
         log.error("Falha ao enviar log para o Discord", error=str(e))
 
+def retry_request(func, retries=3, delay=2, *args, **kwargs):
+    """
+    Função genérica para realizar retries em chamadas de API.
+    :param func: Função a ser chamada.
+    :param retries: Número de tentativas.
+    :param delay: Tempo de espera entre as tentativas (em segundos).
+    """
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            log.error(f"Erro na tentativa {attempt + 1}/{retries}: {str(e)}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
 @router.post("/webhook/mp")
-async def webhook_mp(evento: dict):
+async def webhook_mp(evento: dict, request: Request):
     """
     Rota que o Mercado Pago chama quando um pagamento muda de status.
-    Se estiver aprovado, envia os dados do aluno para /matricular.
+    Se estiver aprovado, envia os dados do aluno para /matricular e envia mensagem no WhatsApp.
     """
     log.info("Recebendo evento do Mercado Pago", evento=evento)
     send_discord_log(f"Evento recebido: {json.dumps(evento, indent=2)}")
@@ -37,13 +56,11 @@ async def webhook_mp(evento: dict):
         send_discord_log("Erro: ID do pagamento ausente no evento")
         raise HTTPException(400, "ID do pagamento ausente no evento")
 
-    headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
-
     # Consulta os dados do pagamento
     log.info("Consultando dados do pagamento", payment_id=payment_id)
     send_discord_log(f"Consultando pagamento: {payment_id}")
     async with httpx.AsyncClient(http2=True) as client:
-        resp = await client.get(f"{MP_BASE_URL}/v1/payments/{payment_id}", headers=headers)
+        resp = await retry_request(client.get, retries=3, delay=2, url=f"{MP_BASE_URL}/v1/payments/{payment_id}", headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"})
         if resp.status_code != 200:
             log.error("Pagamento não encontrado", id=payment_id, status=resp.status_code, body=resp.text)
             send_discord_log(f"Erro ao consultar pagamento: {resp.text}")
@@ -56,7 +73,7 @@ async def webhook_mp(evento: dict):
     # Ignora pagamentos não aprovados
     if pay.get("status") != "approved":
         log.info("Pagamento não aprovado", status=pay.get("status"), id=payment_id)
-        send_discord_log(f"Pagamento não aprovado: {pay.get('status')}")
+        send_discord_log(f"Pagamento não aprovado: {pay.get('status')}\n{json.dumps(pay, indent=2)}")
         return {"msg": "Pagamento não aprovado"}
 
     # Extrai os dados salvos no metadata
@@ -74,7 +91,7 @@ async def webhook_mp(evento: dict):
     # Chama o endpoint de matrícula com os dados do aluno
     log.info("Enviando dados para matrícula", url=MATRICULAR_URL, payload=payload)
     async with httpx.AsyncClient(http2=True, timeout=15) as client:
-        r = await client.post(MATRICULAR_URL, json=payload)
+        r = await retry_request(client.post, retries=3, delay=2, url=MATRICULAR_URL, json=payload)
         if r.status_code >= 300:
             log.error("Falha ao matricular aluno", status=r.status_code, body=r.text)
             send_discord_log(f"Erro ao matricular aluno: {r.text}")
@@ -83,4 +100,45 @@ async def webhook_mp(evento: dict):
     log.info("Aluno matriculado com sucesso", payload=payload)
     send_discord_log("Aluno matriculado com sucesso")
 
-    return {"msg": "Aluno matriculado com sucesso"}
+    # Envia mensagem de boas-vindas pelo WhatsApp
+    whatsapp_message = f"""👋 Seja bem-vindo(a), {payload['nome']}! 
+
+🔑 Acesso
+Login: 20254158021
+Senha: 123456
+
+📚 Cursos Adquiridos: 
+• " + "\n• ".join(payload['cursos']) + "
+
+🧑‍🏫 Grupo da Escola: https://chat.whatsapp.com/Gzn00RNW15ABBfmTc6FEnP
+
+📱 Acesse pelo seu dispositivo preferido:
+• Android: https://play.google.com/store/apps/details?id=br.com.om.app&hl=pt
+• iOS: https://apps.apple.com/fr/app/meu-app-de-cursos/id1581898914
+• Computador: https://ead.cedbrasilia.com.br/
+
+Caso deseje trocar ou adicionar outros cursos, basta responder a esta mensagem.
+
+Obrigado por escolher a CED Cursos! Estamos aqui para ajudar nos seus objetivos educacionais.
+
+Atenciosamente, Equipe CED"""
+
+    whatsapp_payload = {
+        "number": payload["whatsapp"],
+        "message": whatsapp_message
+    }
+
+    log.info("Enviando mensagem no WhatsApp", url=f"{CHATPRO_URL}/send-message", payload=whatsapp_payload)
+    send_discord_log(f"Enviando mensagem no WhatsApp: {json.dumps(whatsapp_payload, indent=2)}")
+    async with httpx.AsyncClient(http2=True, timeout=15) as client:
+        whatsapp_headers = {"Authorization": f"Bearer {CHATPRO_TOKEN}"}
+        whatsapp_resp = await retry_request(client.post, retries=3, delay=2, url=f"{CHATPRO_URL}/send-message", json=whatsapp_payload, headers=whatsapp_headers)
+        if whatsapp_resp.status_code >= 300:
+            log.error("Falha ao enviar mensagem no WhatsApp", status=whatsapp_resp.status_code, body=whatsapp_resp.text)
+            send_discord_log(f"Erro ao enviar mensagem no WhatsApp: {whatsapp_resp.text}")
+            raise HTTPException(500, "Falha ao enviar mensagem no WhatsApp")
+
+    log.info("Mensagem enviada com sucesso no WhatsApp", payload=whatsapp_payload)
+    send_discord_log("Mensagem enviada com sucesso no WhatsApp")
+
+    return {"msg": "Aluno matriculado e mensagem enviada com sucesso"}
