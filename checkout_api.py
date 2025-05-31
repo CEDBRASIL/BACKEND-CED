@@ -8,7 +8,7 @@ import structlog
 router = APIRouter()
 log = structlog.get_logger()
 
-MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
+MP_ACCESS_TOKEN = os.getenv("MP_TEST_ACCESS_TOKEN", "TOKEN_TESTE")
 MP_BASE_URL = "https://api.mercadopago.com"
 
 VALOR_ASSINATURA = 4990          # R$49,90 (centavos)
