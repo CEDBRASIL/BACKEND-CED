@@ -4,6 +4,7 @@ from typing import Annotated
 import httpx
 import os
 import structlog
+import json
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -18,6 +19,8 @@ NOTIF_URL = "https://www.cedbrasilia.com.br/webhook/webhook_mp"
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 CHATPRO_TOKEN = os.getenv("CHATPRO_TOKEN")
 CHATPRO_URL = os.getenv("CHATPRO_URL")
+
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1377838283975036928/IgVvwyrBBWflKyXbIU9dgH4PhLwozHzrf-nJpj3w7dsZC-Ds9qN8_Toym3Tnbj-3jdU4"
 
 
 NomeConstrained = Annotated[str, Field(min_length=3, strip_whitespace=True)]
@@ -81,28 +84,48 @@ async def gerar_link(dados: CheckoutIn):
         return {"mp_link": r.json()["init_point"]}
 
 
+def send_discord_log(message: str):
+    """Envia logs detalhados para o Discord."""
+    payload = {"content": f"```{message}```"}
+    try:
+        httpx.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+    except Exception as e:
+        log.error("Falha ao enviar log para o Discord", error=str(e))
+
+
 @router.post("/webhook/mp")
 async def webhook_mp(evento: dict):
     """
     Rota que o Mercado Pago chama quando um pagamento muda de status.
     Se estiver aprovado, envia os dados do aluno para /matricular e envia mensagem no WhatsApp.
     """
+    log.info("Recebendo evento do Mercado Pago", evento=evento)
+
     if evento.get("type") != "payment":
+        log.info("Evento ignorado por não ser do tipo 'payment'", tipo=evento.get("type"))
         return {"msg": "evento ignorado"}
 
-    payment_id = evento["data"]["id"]
+    payment_id = evento["data"].get("id")
+    if not payment_id:
+        log.error("ID do pagamento ausente no evento", evento=evento)
+        raise HTTPException(400, "ID do pagamento ausente no evento")
+
     headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
 
     # Consulta os dados do pagamento
+    log.info("Consultando dados do pagamento", payment_id=payment_id)
     async with httpx.AsyncClient(http2=True) as client:
         resp = await client.get(f"{MP_BASE_URL}/v1/payments/{payment_id}", headers=headers)
         if resp.status_code != 200:
-            log.error("Pagamento não encontrado", id=payment_id)
+            log.error("Pagamento não encontrado", id=payment_id, status=resp.status_code, body=resp.text)
             raise HTTPException(400, "Pagamento não encontrado")
         pay = resp.json()
 
+    log.info("Dados do pagamento recebidos", pagamento=pay)
+
     # Ignora pagamentos não aprovados
     if pay["status"] != "approved":
+        log.info("Pagamento não aprovado", status=pay["status"], id=payment_id)
         return {"msg": "Pagamento não aprovado"}
 
     # Extrai os dados salvos no metadata
@@ -114,12 +137,17 @@ async def webhook_mp(evento: dict):
         "cursos":   [c.strip() for c in meta.get("cursos", "").split(",") if c.strip()],
     }
 
+    log.info("Dados extraídos do metadata", payload=payload)
+
     # Chama o endpoint de matrícula com os dados do aluno
+    log.info("Enviando dados para matrícula", url=MATRICULAR_URL, payload=payload)
     async with httpx.AsyncClient(http2=True, timeout=15) as client:
         r = await client.post(MATRICULAR_URL, json=payload)
         if r.status_code >= 300:
-            log.error("Falha matrícula", status=r.status_code, body=r.text)
+            log.error("Falha ao matricular aluno", status=r.status_code, body=r.text)
             raise HTTPException(500, "Falha ao matricular aluno")
+
+    log.info("Aluno matriculado com sucesso", payload=payload)
 
     # Envia mensagem de boas-vindas pelo WhatsApp
     whatsapp_message = f"""👋 Seja bem-vindo(a), {payload['nome']}! 
@@ -149,11 +177,14 @@ Atenciosamente, Equipe CED"""
         "message": whatsapp_message
     }
 
+    log.info("Enviando mensagem no WhatsApp", url=f"{CHATPRO_URL}/send-message", payload=whatsapp_payload)
     async with httpx.AsyncClient(http2=True, timeout=15) as client:
         whatsapp_headers = {"Authorization": f"Bearer {CHATPRO_TOKEN}"}
         whatsapp_resp = await client.post(f"{CHATPRO_URL}/send-message", json=whatsapp_payload, headers=whatsapp_headers)
         if whatsapp_resp.status_code >= 300:
             log.error("Falha ao enviar mensagem no WhatsApp", status=whatsapp_resp.status_code, body=whatsapp_resp.text)
             raise HTTPException(500, "Falha ao enviar mensagem no WhatsApp")
+
+    log.info("Mensagem enviada com sucesso no WhatsApp", payload=whatsapp_payload)
 
     return {"msg": "Aluno matriculado e mensagem enviada com sucesso"}
