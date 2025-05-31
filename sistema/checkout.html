@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Matrícula Online - CED</title>
+    <script>
+    // Carrega lista de cursos dinamicamente
+    window.addEventListener('DOMContentLoaded', () => {
+        fetch('https://api.cedbrasilia.com.br/cursos')
+            .then(res => res.json())
+            .then(data => {
+                const cursos = data.cursos;
+                const container = document.getElementById('cursosContainer');
+                if (!cursos || cursos.length === 0) {
+                    container.innerHTML = '<p>Nenhum curso disponível no momento.</p>';
+                    return;
+                }
+                const fieldset = document.createElement('fieldset');
+                const legend = document.createElement('legend');
+                legend.textContent = 'Selecione os cursos:';
+                fieldset.appendChild(legend);
+                cursos.forEach(curso => {
+                    const label = document.createElement('label');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.name = 'cursos';
+                    checkbox.value = curso.nome;
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(curso.nome));
+                    fieldset.appendChild(label);
+                    fieldset.appendChild(document.createElement('br'));
+                });
+                container.appendChild(fieldset);
+            })
+            .catch(err => {
+                console.error('Erro ao carregar cursos:', err);
+            });
+    });
+    </script>
+</head>
+<body>
+    <h1>Formulário de Matrícula - CED</h1>
+    <form id="matriculaForm">
+        <label>Nome: <input type="text" id="nome" required></label><br>
+        <label>E-mail: <input type="email" id="email" required></label><br>
+        <label>WhatsApp: <input type="text" id="whatsapp" required></label><br>
+        <div id="cursosContainer">
+            <!-- Checkboxes de cursos serão inseridos aqui -->
+        </div><br>
+        <button type="submit">Prosseguir para Pagamento</button>
+    </form>
+    <script>
+    // Envia dados para checkout e redireciona para link do Mercado Pago
+    document.getElementById('matriculaForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+        const nome = document.getElementById('nome').value;
+        const email = document.getElementById('email').value;
+        const whatsapp = document.getElementById('whatsapp').value;
+        const selectedCursos = Array.from(document.querySelectorAll('input[name="cursos"]:checked'))
+                                 .map(cb => cb.value);
+        if (!nome || !email || !whatsapp || selectedCursos.length === 0) {
+            alert('Por favor, preencha todos os campos e selecione pelo menos um curso.');
+            return;
+        }
+        const payload = {
+            nome: nome,
+            email: email,
+            whatsapp: whatsapp,
+            cursos: selectedCursos
+        };
+        fetch('https://api.cedbrasilia.com.br/pay/eeb/checkout', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.link) {
+                window.location.href = data.link;
+            } else if (data.detail) {
+                alert('Erro: ' + data.detail);
+            } else {
+                alert('Erro desconhecido ao processar pagamento.');
+            }
+        })
+        .catch(error => {
+            console.error('Erro na requisição:', error);
+            alert('Falha na comunicação com o servidor.');
+        });
+    });
+    </script>
+</body>
+</html>

@@ -126,7 +126,7 @@ async def webhook_mp_teste(request: Request):
             async with httpx.AsyncClient() as client:
                 matricular_resp = await client.post(MATRICULAR_URL, json=matricular_payload)
                 if matricular_resp.status_code != 200:
-                    logging.error(f"Falha na matrícula teste: {matricular_resp.text}")
+                    logging.error(f"Falha na matrículaa teste: {matricular_resp.text}")
                     return JSONResponse(status_code=500, content={"message": "Falha na matrícula"})
 
             return JSONResponse(content={"message": "Pagamento aprovado e aluno matriculado (teste)"})
