@@ -25,7 +25,7 @@ def obter_token_unidade() -> str:
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
         token = r.json()["data"]["token"]
-        return 
+        return token
 
     raise RuntimeError(f"Falha ao obter token da unidade: HTTP {r.status_code}")
 
