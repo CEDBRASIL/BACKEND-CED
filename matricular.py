@@ -1,57 +1,31 @@
-from fastapi import FastAPI
-
-app = FastAPI()
-
-from cursos import CURSOS_OM, listar_cursos
 import os
 import threading
-import datetime
 from typing import List, Tuple
-
 import requests
-from dotenv import load_dotenv
-from fastapi import FastAPI, Request    
-import uvicorn
+from fastapi import APIRouter, HTTPException
+from datetime import datetime
 
-# Carrega variáveis de ambiente
-load_dotenv()
+router = APIRouter()
 
-OM_BASE         = os.getenv("OM_BASE")
-BASIC_B64       = os.getenv("BASIC_B64")
-UNIDADE_ID      = os.getenv("UNIDADE_ID")
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "")
-DISCORD_FIXO    = "https://discord.com/api/webhooks/1377838283975036928/IgVvwyrBBWflKyXbIU9dgH4PhLwozHzrf-nJpj3w7dsZC-Ds9qN8_Toym3Tnbj-3jdU4"
+# Variáveis de ambiente
+BASIC_B64 = os.getenv("BASIC_B64")
+UNIDADE_ID = os.getenv("UNIDADE_ID")
+OM_BASE = os.getenv("OM_BASE")
 
-CALLMEBOT_URL      = "https://api.callmebot.com/whatsapp.php"
-CALLMEBOT_APIKEY   = "2712587"
-CALLMEBOT_PHONE    = "+556186660241"
-
+# Bloqueio para gerar CPF sequencial
 CPF_PREFIXO = "20254158"
 cpf_lock = threading.Lock()
 
-# ────────────────── Helpers ────────────────── #
-
-def _log(msg: str) -> None:
-    """Envia mensagens para console e, se configurado, para webhooks."""
-    print(msg)
-    for webhook in filter(None, (DISCORD_WEBHOOK, DISCORD_FIXO)):
-        try:
-            requests.post(webhook, json={"content": msg}, timeout=4)
-        except Exception:
-            pass
-
-def _enviar_callmebot(msg: str) -> None:
-    try:
-        params = {
-            "phone": CALLMEBOT_PHONE,
-            "text": msg,
-            "apikey": CALLMEBOT_APIKEY,
-        }
-        requests.get(CALLMEBOT_URL, params=params, timeout=10)
-    except Exception:
-        pass
+def _log(msg: str):
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{agora}] {msg}")
 
 def _obter_token_unidade() -> str:
+    """
+    Faz GET em /unidades/token/{UNIDADE_ID} para obter token OM.
+    """
+    if not all([OM_BASE, BASIC_B64, UNIDADE_ID]):
+        raise RuntimeError("Variáveis de ambiente OM não configuradas.")
     url = f"{OM_BASE}/unidades/token/{UNIDADE_ID}"
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
@@ -59,41 +33,40 @@ def _obter_token_unidade() -> str:
     raise RuntimeError(f"Falha ao obter token da unidade: {r.status_code}")
 
 def _total_alunos() -> int:
+    """
+    Retorna total de alunos cadastrado na unidade OM (para gerar CPF).
+    """
     url = f"{OM_BASE}/alunos/total/{UNIDADE_ID}"
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
         return int(r.json()["data"]["total"])
     # fallback
-    url = f"{OM_BASE}/alunos?unidade_id={UNIDADE_ID}&cpf_like={CPF_PREFIXO}"
-    r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
-    if r.ok and r.json().get("status") == "true":
-        return len(r.json()["data"])
+    url2 = f"{OM_BASE}/alunos?unidade_id={UNIDADE_ID}&cpf_like={CPF_PREFIXO}"
+    r2 = requests.get(url2, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
+    if r2.ok and r2.json().get("status") == "true":
+        return len(r2.json()["data"])
     raise RuntimeError("Falha ao apurar total de alunos")
 
 def _proximo_cpf(incremento: int = 0) -> str:
     with cpf_lock:
-        sequencia = _total_alunos() + 1 + incremento
-        return CPF_PREFIXO + str(sequencia).zfill(3)
-
-# ────────────────── Operações na OM ────────────────── #
+        seq = _total_alunos() + 1 + incremento
+        return CPF_PREFIXO + str(seq).zfill(3)
 
 def _matricular_aluno_om(aluno_id: str, cursos_ids: List[int], token_key: str) -> bool:
-    """Efetua a matrícula (vincula planos) para o aluno já cadastrado."""
-    cursos_ids = list(map(str, cursos_ids))
-    if not cursos_ids:
-        _log("[MAT] Nenhum curso informado.")
-        return False
-
-    payload = {"token": token_key, "cursos": ",".join(cursos_ids)}
-    _log(f"[MAT] matriculando aluno {aluno_id} | cursos {payload['cursos']}")
+    """
+    Efetua a matrícula (vincula disciplinas) para o aluno já cadastrado.
+    """
+    cursos_str = ",".join(map(str, cursos_ids))
+    payload = {"token": token_key, "cursos": cursos_str}
+    _log(f"[MAT] Matriculando aluno {aluno_id} nos cursos: {cursos_str}")
     r = requests.post(
         f"{OM_BASE}/alunos/matricula/{aluno_id}",
         data=payload,
         headers={"Authorization": f"Basic {BASIC_B64}"},
-        timeout=10,
+        timeout=10
     )
     sucesso = r.ok and r.json().get("status") == "true"
-    _log(f"[MAT] {'✅' if sucesso else '❌'} {r.status_code} | {r.text[:120]}")
+    _log(f"[MAT] {'✅' if sucesso else '❌'} Status {r.status_code}")
     return sucesso
 
 def _cadastrar_aluno_om(
@@ -102,9 +75,13 @@ def _cadastrar_aluno_om(
     email: str,
     cursos_ids: List[int],
     token_key: str,
-    senha_padrao: str = "123456",
-) -> Tuple[str | None, str | None]:
-    """Tenta cadastrar o aluno (até 60 tentativas com CPF sequencial)."""
+    senha_padrao: str = "123456"
+) -> Tuple[str, str]:
+    """
+    Tenta cadastrar o aluno (até 60 tentativas para gerar CPF único) 
+    e, em seguida, matricular nas disciplinas.
+    Retorna (aluno_id, cpf).
+    """
     for tentativa in range(60):
         cpf = _proximo_cpf(tentativa)
         payload = {
@@ -132,97 +109,53 @@ def _cadastrar_aluno_om(
             f"{OM_BASE}/alunos",
             data=payload,
             headers={"Authorization": f"Basic {BASIC_B64}"},
-            timeout=10,
+            timeout=10
         )
-        _log(f"[CAD] tent {tentativa+1}/60 | {r.status_code} | {r.text[:120]}")
+        _log(f"[CAD] Tentativa {tentativa+1}/60 | Status {r.status_code}")
         if r.ok and r.json().get("status") == "true":
             aluno_id = r.json()["data"]["id"]
             if _matricular_aluno_om(aluno_id, cursos_ids, token_key):
-                _enviar_callmebot("✅ Matrícula gerada com sucesso.")
                 return aluno_id, cpf
-        if "já está em uso" not in (r.json() or {}).get("info", "").lower():
+        # Se o CPF não estava em uso, não insiste em próximos
+        info = (r.json() or {}).get("info", "").lower()
+        if "já está em uso" not in info:
             break
-    return None, None
+    raise RuntimeError("Falha ao cadastrar ou matricular o aluno")
 
-# ────────────────── API externa ────────────────── #
+@router.post("/", summary="Cadastra e matricula um aluno via OM")
+async def realizar_matricula(dados: dict):
+    """
+    Espera um JSON com:
+      - nome: str
+      - whatsapp: str
+      - email: str
+      - cursos_ids: List[int]  (IDs de disciplinas)
+    Exemplo de body:
+    {
+      "nome": "Maria Silva",
+      "whatsapp": "61988887777",
+      "email": "maria@ex.com",
+      "cursos_ids": [129, 198, 156, 154]
+    }
+    """
+    nome = dados.get("nome")
+    whatsapp = dados.get("whatsapp")
+    email = dados.get("email")
+    cursos_ids = dados.get("cursos_ids")
 
-def matricular_aluno(
-    nome: str,
-    whatsapp: str,
-    email: str,
-    cursos_ids: List[int],
-) -> Tuple[str, str]:
-    if not cursos_ids:
-        raise ValueError("'cursos_ids' não pode estar vazio.")
-
-    token_key = _obter_token_unidade()
-    aluno_id, cpf = _cadastrar_aluno_om(nome, whatsapp, email, cursos_ids, token_key)
-    if not aluno_id:
-        raise RuntimeError("Falha ao cadastrar ou matricular o aluno.")
-
-    _log(f"✅ Processo concluído – aluno_id: {aluno_id} | cpf: {cpf}")
-    return aluno_id, cpf
-
-# ────────────────── API HTTP (gatilho) ────────────────── #
-
-app = FastAPI()
-
-@app.post("/matricular")
-async def gatilho_matricula(request: Request):
-    body = await request.json()
-
-    nome = body.get("nome")
-    whatsapp = body.get("whatsapp")
-    email = body.get("email")
-    cursos_ids = body.get("cursos_ids")  # lista de ints
-
+    # Validações simples
     if not all([nome, whatsapp, email, cursos_ids]):
-        return {"status": "erro", "mensagem": "Dados incompletos"}
+        raise HTTPException(status_code=400, detail="Dados incompletos")
 
     try:
-        aluno_id, cpf = matricular_aluno(nome, whatsapp, email, cursos_ids)
-        return {"status": "ok", "aluno_id": aluno_id, "cpf": cpf}
+        token_unit = _obter_token_unidade()
+        aluno_id, cpf = _cadastrar_aluno_om(nome, whatsapp, email, cursos_ids, token_unit)
+        return {
+            "status": "ok",
+            "aluno_id": aluno_id,
+            "cpf": cpf,
+            "disciplinas": cursos_ids
+        }
     except Exception as e:
-        return {"status": "erro", "mensagem": str(e)}
-    
-
-
-
-# ────────────────── API Secure (gatilho para Renovar a token) ────────────────── #
-
-@app.get("/secure")
-async def renovar_token():
-    try:
-        _ = _obter_token_unidade()
-        return {"status": "ok", "mensagem": "Token renovado com sucesso"}
-    except Exception as e:
-        return {"status": "erro", "mensagem": str(e)}
-
-
-
-# ────────────────── CLI rápido ────────────────── #
-
-if __name__ == "__main__":
-    import argparse, sys, json
-
-    parser = argparse.ArgumentParser(description="Matricula rápida de aluno")
-    parser.add_argument("nome")
-    parser.add_argument("whatsapp")
-    parser.add_argument("email")
-    parser.add_argument("cursos", help="Lista de IDs de planos, separada por vírgulas")
-
-    args = parser.parse_args()
-    ids = [int(i.strip()) for i in args.cursos.split(",") if i.strip().isdigit()]
-
-    try:
-        aluno_id, cpf = matricular_aluno(args.nome, args.whatsapp, args.email, ids)
-        resultado = {"status": "ok", "aluno_id": aluno_id, "cpf": cpf}
-    except Exception as e:
-        resultado = {"status": "erro", "erro": str(e)}
-
-    print(json.dumps(resultado, ensure_ascii=False, indent=2))
-
-    # Iniciar servidor FastAPI local, se necessário
-    # uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
+        _log(f"❌ Erro em /matricular: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
