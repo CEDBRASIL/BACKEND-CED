@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 import structlog
-
 from cursos import router as cursos_router
 from matricular import router as matricular_router
 from secure import router as secure_router
@@ -12,7 +11,10 @@ logger = structlog.get_logger()
 
 app = FastAPI(title="CED API", version="1.0.0")
 
-origins = ["https://www.cedbrasilia.com.br"]
+origins = [
+    "https://www.cedbrasilia.com.br",
+    "https://api.cedbrasilia.com.br"
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
