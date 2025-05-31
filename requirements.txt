@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+httpx[http2]
+mercadopago
+requests
+structlog
+python-multipart
