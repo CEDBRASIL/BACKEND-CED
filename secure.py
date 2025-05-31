@@ -21,11 +21,11 @@ def obter_token_unidade() -> str:
     if not all([OM_BASE, BASIC_B64, UNIDADE_ID]):
         raise RuntimeError("Variáveis OM não configuradas (OM_BASE, BASIC_B64, UNIDADE_ID).")
 
-    url = f"{OM_BASE}/unidades/token/{UNIDADE_ID}"
+    url = f"{OM_BASE}/unidades/token/{UNIDADE_ID}"  
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
         token = r.json()["data"]["token"]
-        return token
+        return 
 
     raise RuntimeError(f"Falha ao obter token da unidade: HTTP {r.status_code}")
 
