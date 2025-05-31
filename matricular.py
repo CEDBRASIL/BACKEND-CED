@@ -54,13 +54,30 @@ def _total_alunos() -> int:
     raise RuntimeError("Falha ao apurar total de alunos")
 
 
+# Melhorias na geração de CPF
+CPF_MAX_RETRIES = 100  # Limite de tentativas para evitar colisões
+
 def _proximo_cpf(incremento: int = 0) -> str:
     """
     Gera o próximo CPF sequencial, adicionando incremento para evitar colisões.
     """
     with cpf_lock:
-        seq = _total_alunos() + 1 + incremento
-        return CPF_PREFIXO + str(seq).zfill(3)
+        for tentativa in range(CPF_MAX_RETRIES):
+            seq = _total_alunos() + 1 + incremento + tentativa
+            cpf = CPF_PREFIXO + str(seq).zfill(3)
+            if not _cpf_em_uso(cpf):
+                return cpf
+        raise RuntimeError("Limite de tentativas para gerar CPF excedido.")
+
+def _cpf_em_uso(cpf: str) -> bool:
+    """
+    Verifica se o CPF já está em uso na base de dados da OM.
+    """
+    url = f"{OM_BASE}/alunos?unidade_id={UNIDADE_ID}&cpf={cpf}"
+    r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
+    if r.ok and r.json().get("status") == "true":
+        return len(r.json().get("data", [])) > 0
+    return False
 
 
 def _cadastrar_somente_aluno(
@@ -167,6 +184,7 @@ def _cadastrar_aluno_om(
     return aluno_id, cpf
 
 
+# Melhorias na função de matrícula
 @router.post("/", summary="Cadastra (e opcionalmente matricula) um aluno na OM a partir do nome dos cursos")
 async def realizar_matricula(dados: dict):
     """
@@ -176,28 +194,6 @@ async def realizar_matricula(dados: dict):
       - email: str (opcional)
       - cursos: List[str] (opcional, nomes dos cursos conforme mapeamento em cursos.py)
       - cursos_ids: List[int] (opcional, IDs diretos, caso queira forçar)
-
-    Exemplos de body:
-
-    Somente nome e WhatsApp:
-    {
-      "nome": "Maria Silva",
-      "whatsapp": "61988887777"
-    }
-
-    Com nomes de cursos:
-    {
-      "nome": "Maria Silva",
-      "whatsapp": "61988887777",
-      "cursos": ["Administração", "Pacote Office"]
-    }
-
-    Com IDs diretos (prioritário sobre "cursos"):
-    {
-      "nome": "Maria Silva",
-      "whatsapp": "61988887777",
-      "cursos_ids": [129, 198, 156, 154]
-    }
     """
     nome = dados.get("nome")
     whatsapp = dados.get("whatsapp")
@@ -205,20 +201,16 @@ async def realizar_matricula(dados: dict):
     cursos_nomes = dados.get("cursos") or []
     cursos_ids_input = dados.get("cursos_ids") or []
 
-    # Validação: apenas nome e whatsapp obrigatórios
     if not nome or not whatsapp:
         raise HTTPException(
             status_code=400,
             detail="Dados incompletos: 'nome' e 'whatsapp' são obrigatórios."
         )
 
-    # 1) Primeiro transforma "cursos" (nomes) em IDs usando o mapeamento
     cursos_ids: List[int] = []
     if cursos_ids_input:
-        # Se o usuário forneceu "cursos_ids" explicitamente, utiliza esses
         cursos_ids = cursos_ids_input
     else:
-        # Caso contrário, tenta mapear pelos nomes
         for nome_curso in cursos_nomes:
             chave = next((k for k in CURSOS_OM if k.lower() == nome_curso.lower()), None)
             if not chave:
@@ -237,6 +229,9 @@ async def realizar_matricula(dados: dict):
             "cpf": cpf,
             "disciplinas_matriculadas": cursos_ids,
         }
-    except Exception as e:
+    except RuntimeError as e:
         _log(f"❌ Erro em /matricular: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        _log(f"❌ Erro inesperado em /matricular: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erro inesperado. Consulte os logs para mais detalhes.")
