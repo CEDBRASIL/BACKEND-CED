@@ -1,3 +1,6 @@
+from fastapi import FastAPI
+
+app = FastAPI()
 
 from cursos import CURSOS_OM, listar_cursos
 import os
