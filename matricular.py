@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import requests
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
@@ -16,9 +16,11 @@ OM_BASE = os.getenv("OM_BASE")
 CPF_PREFIXO = "20254158"
 cpf_lock = threading.Lock()
 
+
 def _log(msg: str):
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{agora}] {msg}")
+
 
 def _obter_token_unidade() -> str:
     """
@@ -31,6 +33,7 @@ def _obter_token_unidade() -> str:
     if r.ok and r.json().get("status") == "true":
         return r.json()["data"]["token"]
     raise RuntimeError(f"Falha ao obter token da unidade: {r.status_code}")
+
 
 def _total_alunos() -> int:
     """
@@ -47,39 +50,18 @@ def _total_alunos() -> int:
         return len(r2.json()["data"])
     raise RuntimeError("Falha ao apurar total de alunos")
 
+
 def _proximo_cpf(incremento: int = 0) -> str:
     with cpf_lock:
         seq = _total_alunos() + 1 + incremento
         return CPF_PREFIXO + str(seq).zfill(3)
 
-def _matricular_aluno_om(aluno_id: str, cursos_ids: List[int], token_key: str) -> bool:
-    """
-    Efetua a matrícula (vincula disciplinas) para o aluno já cadastrado.
-    """
-    cursos_str = ",".join(map(str, cursos_ids))
-    payload = {"token": token_key, "cursos": cursos_str}
-    _log(f"[MAT] Matriculando aluno {aluno_id} nos cursos: {cursos_str}")
-    r = requests.post(
-        f"{OM_BASE}/alunos/matricula/{aluno_id}",
-        data=payload,
-        headers={"Authorization": f"Basic {BASIC_B64}"},
-        timeout=10
-    )
-    sucesso = r.ok and r.json().get("status") == "true"
-    _log(f"[MAT] {'✅' if sucesso else '❌'} Status {r.status_code}")
-    return sucesso
 
-def _cadastrar_aluno_om(
-    nome: str,
-    whatsapp: str,
-    email: str,
-    cursos_ids: List[int],
-    token_key: str,
-    senha_padrao: str = "123456"
+def _cadastrar_somente_aluno(
+    nome: str, whatsapp: str, email: Optional[str], token_key: str, senha_padrao: str = "123456"
 ) -> Tuple[str, str]:
     """
-    Tenta cadastrar o aluno (até 60 tentativas para gerar CPF único) 
-    e, em seguida, matricular nas disciplinas.
+    Cadastra apenas o aluno (sem matrícula em disciplinas).
     Retorna (aluno_id, cpf).
     """
     for tentativa in range(60):
@@ -87,7 +69,7 @@ def _cadastrar_aluno_om(
         payload = {
             "token": token_key,
             "nome": nome,
-            "email": email,
+            "email": email or "",
             "whatsapp": whatsapp,
             "fone": whatsapp,
             "celular": whatsapp,
@@ -109,53 +91,9 @@ def _cadastrar_aluno_om(
             f"{OM_BASE}/alunos",
             data=payload,
             headers={"Authorization": f"Basic {BASIC_B64}"},
-            timeout=10
+            timeout=10,
         )
         _log(f"[CAD] Tentativa {tentativa+1}/60 | Status {r.status_code}")
         if r.ok and r.json().get("status") == "true":
             aluno_id = r.json()["data"]["id"]
-            if _matricular_aluno_om(aluno_id, cursos_ids, token_key):
-                return aluno_id, cpf
-        # Se o CPF não estava em uso, não insiste em próximos
-        info = (r.json() or {}).get("info", "").lower()
-        if "já está em uso" not in info:
-            break
-    raise RuntimeError("Falha ao cadastrar ou matricular o aluno")
-
-@router.post("/", summary="Cadastra e matricula um aluno via OM")
-async def realizar_matricula(dados: dict):
-    """
-    Espera um JSON com:
-      - nome: str
-      - whatsapp: str
-      - email: str
-      - cursos_ids: List[int]  (IDs de disciplinas)
-    Exemplo de body:
-    {
-      "nome": "Maria Silva",
-      "whatsapp": "61988887777",
-      "email": "maria@ex.com",
-      "cursos_ids": [129, 198, 156, 154]
-    }
-    """
-    nome = dados.get("nome")
-    whatsapp = dados.get("whatsapp")
-    email = dados.get("email")
-    cursos_ids = dados.get("cursos_ids")
-
-    # Validações simples
-    if not all([nome, whatsapp, email, cursos_ids]):
-        raise HTTPException(status_code=400, detail="Dados incompletos")
-
-    try:
-        token_unit = _obter_token_unidade()
-        aluno_id, cpf = _cadastrar_aluno_om(nome, whatsapp, email, cursos_ids, token_unit)
-        return {
-            "status": "ok",
-            "aluno_id": aluno_id,
-            "cpf": cpf,
-            "disciplinas": cursos_ids
-        }
-    except Exception as e:
-        _log(f"❌ Erro em /matricular: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return aluno_id,_
