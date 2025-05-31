@@ -1,3 +1,5 @@
+# matricular.py
+
 import os
 import threading
 from typing import List, Tuple, Optional
@@ -12,7 +14,7 @@ BASIC_B64 = os.getenv("BASIC_B64")
 UNIDADE_ID = os.getenv("UNIDADE_ID")
 OM_BASE = os.getenv("OM_BASE")
 
-# Bloqueio para gerar CPF sequencial
+# Prefixo para gerar CPFs sequenciais na OM
 CPF_PREFIXO = "20254158"
 cpf_lock = threading.Lock()
 
@@ -24,7 +26,7 @@ def _log(msg: str):
 
 def _obter_token_unidade() -> str:
     """
-    Faz GET em /unidades/token/{UNIDADE_ID} para obter token OM.
+    Faz GET em /unidades/token/{UNIDADE_ID} para obter token da unidade na OM.
     """
     if not all([OM_BASE, BASIC_B64, UNIDADE_ID]):
         raise RuntimeError("Variáveis de ambiente OM não configuradas.")
@@ -32,18 +34,18 @@ def _obter_token_unidade() -> str:
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
         return r.json()["data"]["token"]
-    raise RuntimeError(f"Falha ao obter token da unidade: {r.status_code}")
+    raise RuntimeError(f"Falha ao obter token da unidade: HTTP {r.status_code}")
 
 
 def _total_alunos() -> int:
     """
-    Retorna total de alunos cadastrado na unidade OM (para gerar CPF).
+    Retorna o total de alunos cadastrados na unidade OM (para gerar CPF).
     """
     url = f"{OM_BASE}/alunos/total/{UNIDADE_ID}"
     r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r.ok and r.json().get("status") == "true":
         return int(r.json()["data"]["total"])
-    # fallback
+    # Fallback: busca todos que tenham CPF começando com o prefixo
     url2 = f"{OM_BASE}/alunos?unidade_id={UNIDADE_ID}&cpf_like={CPF_PREFIXO}"
     r2 = requests.get(url2, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
     if r2.ok and r2.json().get("status") == "true":
@@ -52,24 +54,34 @@ def _total_alunos() -> int:
 
 
 def _proximo_cpf(incremento: int = 0) -> str:
+    """
+    Gera o próximo CPF sequencial, adicionando incremento para evitar colisões.
+    """
     with cpf_lock:
         seq = _total_alunos() + 1 + incremento
         return CPF_PREFIXO + str(seq).zfill(3)
 
 
 def _cadastrar_somente_aluno(
-    nome: str, whatsapp: str, email: Optional[str], token_key: str, senha_padrao: str = "123456"
+    nome: str,
+    whatsapp: str,
+    email: Optional[str],
+    token_key: str,
+    senha_padrao: str = "123456"
 ) -> Tuple[str, str]:
     """
-    Cadastra apenas o aluno (sem matrícula em disciplinas).
-    Retorna (aluno_id, cpf).
+    Cadastra apenas o aluno na OM (gera e-mail dummy se não for fornecido).
+    Retorna: (aluno_id, cpf).
     """
+    # Se não houver e-mail, cria um e-mail dummy a partir do WhatsApp
+    email_validado = email or f"{whatsapp}@nao-informado.com"
+
     for tentativa in range(60):
         cpf = _proximo_cpf(tentativa)
         payload = {
             "token": token_key,
             "nome": nome,
-            "email": email or "",
+            "email": email_validado,
             "whatsapp": whatsapp,
             "fone": whatsapp,
             "celular": whatsapp,
@@ -91,9 +103,9 @@ def _cadastrar_somente_aluno(
             f"{OM_BASE}/alunos",
             data=payload,
             headers={"Authorization": f"Basic {BASIC_B64}"},
-            timeout=10,
+            timeout=10
         )
-        _log(f"[CAD] Tentativa {tentativa+1}/60 | Status {r.status_code}")
+        _log(f"[CAD] Tentativa {tentativa+1}/60 | Status {r.status_code} | Retorno OM: {r.text}")
         if r.ok and r.json().get("status") == "true":
             aluno_id = r.json()["data"]["id"]
             return aluno_id, cpf
@@ -108,9 +120,9 @@ def _cadastrar_somente_aluno(
 def _matricular_aluno_om(aluno_id: str, cursos_ids: List[int], token_key: str) -> bool:
     """
     Efetua a matrícula (vincula disciplinas) para o aluno já cadastrado.
+    Se não houver cursos_ids, pula a matrícula e retorna True.
     """
     if not cursos_ids:
-        # Se não há cursos a matricular, pulamos este passo
         _log(f"[MAT] Nenhum curso informado para aluno {aluno_id}. Pulando matrícula.")
         return True
 
@@ -121,10 +133,10 @@ def _matricular_aluno_om(aluno_id: str, cursos_ids: List[int], token_key: str) -
         f"{OM_BASE}/alunos/matricula/{aluno_id}",
         data=payload,
         headers={"Authorization": f"Basic {BASIC_B64}"},
-        timeout=10,
+        timeout=10
     )
     sucesso = r.ok and r.json().get("status") == "true"
-    _log(f"[MAT] {'✅' if sucesso else '❌'} Status {r.status_code}")
+    _log(f"[MAT] {'✅' if sucesso else '❌'} Status {r.status_code} | Retorno OM: {r.text}")
     return sucesso
 
 
@@ -134,16 +146,16 @@ def _cadastrar_aluno_om(
     email: Optional[str],
     cursos_ids: List[int],
     token_key: str,
-    senha_padrao: str = "123456",
+    senha_padrao: str = "123456"
 ) -> Tuple[str, str]:
     """
-    Cadastra aluno e, se houver cursos_ids, matrícula nas disciplinas.
-    Retorna (aluno_id, cpf).
+    Cadastra aluno e, se houver cursos_ids, matricula nas disciplinas.
+    Retorna: (aluno_id, cpf).
     """
-    # Primeiro, cadastro sem matrícula
+    # 1) Cadastro básico do aluno
     aluno_id, cpf = _cadastrar_somente_aluno(nome, whatsapp, email, token_key, senha_padrao)
 
-    # Se houver cursos, tenta matricular. Se não houver, considera sucesso.
+    # 2) Se houver cursos_ids, realiza a matrícula
     if cursos_ids:
         ok_matri = _matricular_aluno_om(aluno_id, cursos_ids, token_key)
         if not ok_matri:
@@ -161,18 +173,18 @@ async def realizar_matricula(dados: dict):
       - nome: str (obrigatório)
       - whatsapp: str (obrigatório)
       - email: str (opcional)
-      - cursos_ids: List[int] (opcional, IDs de disciplinas)
-    Exemplo de body mínimo:
+      - cursos_ids: List[int] (opcional)
+
+    Exemplos de body:
     {
       "nome": "Maria Silva",
       "whatsapp": "61988887777"
     }
-
-    Exemplo com cursos:
+    ou
     {
       "nome": "Maria Silva",
       "whatsapp": "61988887777",
-      "email": "maria@ex.com",
+      "email": "maria@exemplo.com",
       "cursos_ids": [129, 198, 156, 154]
     }
     """
@@ -181,9 +193,12 @@ async def realizar_matricula(dados: dict):
     email = dados.get("email")
     cursos_ids = dados.get("cursos_ids") or []
 
-    # Validações: apenas nome e whatsapp são obrigatórios
+    # Somente 'nome' e 'whatsapp' são obrigatórios
     if not nome or not whatsapp:
-        raise HTTPException(status_code=400, detail="Dados incompletos: 'nome' e 'whatsapp' são obrigatórios.")
+        raise HTTPException(
+            status_code=400,
+            detail="Dados incompletos: 'nome' e 'whatsapp' são obrigatórios."
+        )
 
     try:
         token_unit = _obter_token_unidade()
