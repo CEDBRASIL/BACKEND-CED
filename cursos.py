@@ -1,21 +1,18 @@
-# cursos.py
-from datetime import datetime
 import os
 import requests
+from fastapi import APIRouter, HTTPException
+from typing import Dict, List
+from datetime import datetime
 
-"""
-Mapeamento dos cursos e seus respectivos IDs de disciplinas na Ouro Moderno (OM).
+router = APIRouter()
 
-Use este dicionário para vincular cursos e disciplinas nas matrículas automáticas.
-"""
-
-# Consulta dos tokens
+# Consulta dos tokens (caso precise autenticar na OM)
 BASIC_B64 = os.getenv("BASIC_B64")
 UNIDADE_ID = os.getenv("UNIDADE_ID")
 OM_BASE = os.getenv("OM_BASE")
 
-
-CURSOS_OM = {
+# Mapeamento de cursos para IDs de disciplinas da OM
+CURSOS_OM: Dict[str, List[int]] = {
     "Excel PRO": [161, 197, 201],
     "Design Gráfico": [254, 751, 169],
     "Analista e Desenvolvimento de Sistemas": [590, 176, 239, 203],
@@ -29,57 +26,39 @@ CURSOS_OM = {
     "Pacote Office": [160, 161, 162, 197, 201],
 }
 
-def listar_cursos():
-    """Retorna uma lista formatada dos cursos disponíveis para exibir ao aluno."""
-    linhas = []
-    for curso, ids in CURSOS_OM.items():
-        linhas.append(f"{curso} (ID das disciplinas: {', '.join(map(str, ids))})")
-    return "\n".join(linhas)
-
-if __name__ == "__main__":
-    print("Cursos disponíveis para matrícula:\n")
-    print(listar_cursos())
-
-
-from fastapi import FastAPI, HTTPException
-
-app = FastAPI()
-
-# Função já existente (renomeei para seguir padrão snake_case)
-def obter_token_unidade() -> str:
-    # Seu código para obter token da unidade, exemplo:
-    url = f"{OM_BASE}/unidades/token/{UNIDADE_ID}"
-    r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
-    if r.ok and r.json().get("status") == "true":
-        return r.json()["data"]["token"]
-    raise RuntimeError(f"Falha ao obter token da unidade: {r.status_code}")
-
-@app.get("/secure")
-async def renovar_token():
-    try:
-        token = obter_token_unidade()  # Renova o token
-        log("🔄 Token renovado com sucesso via /secure")
-        return {"status": "ok", "token": token}
-    except Exception as e:
-        _log(f"❌ Falha ao renovar token: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Erro ao renovar token: {str(e)}")
-
-@app.get("/token")
-async def consultar_token():
-    try:
-        # Apenas consulta o token atual, pode ser cacheado se quiser otimizar
-        token = obter_token_unidade()
-        _log("ℹ️ Consulta do token via /token")
-        return {"status": "ok", "token": token}
-    except Exception as e:
-        _log(f"❌ Falha ao consultar token: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Erro ao consultar token: {str(e)}")
-
-
-
 def _log(msg: str):
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{agora}] {msg}")
 
-# Alias alternativo, se quiser usar `log()` também
-log = _log
+@router.get("/", summary="Lista todos os cursos disponíveis")
+async def listar_cursos():
+    """
+    Retorna um dicionário com todos os cursos e seus respectivos IDs de disciplinas.
+    """
+    return {"cursos": CURSOS_OM}
+
+@router.get("/{nome_curso}", summary="Obtém os IDs de disciplinas de um curso específico")
+async def obter_ids_curso(nome_curso: str):
+    """
+    Consulta o mapeamento CURSOS_OM e devolve a lista de IDs de disciplinas para o curso solicitado.
+    Exemplo de URL: /cursos/Administração
+    """
+    curso_key = next((k for k in CURSOS_OM if k.lower() == nome_curso.lower()), None)
+    if not curso_key:
+        raise HTTPException(status_code=404, detail=f"Curso '{nome_curso}' não encontrado.")
+    return {"curso": curso_key, "disciplinas": CURSOS_OM[curso_key]}
+
+@router.get("/tokens", summary="Exemplo: retornar token atual da unidade (opcional)")
+async def consultar_token_unidade():
+    """
+    Exemplo de rota adicional em 'cursos' para verificar token da OM.
+    """
+    if not all([BASIC_B64, UNIDADE_ID, OM_BASE]):
+        raise HTTPException(status_code=500, detail="Variáveis de ambiente OM não configuradas.")
+    url = f"{OM_BASE}/unidades/token/{UNIDADE_ID}"
+    r = requests.get(url, headers={"Authorization": f"Basic {BASIC_B64}"}, timeout=8)
+    if r.ok and r.json().get("status") == "true":
+        token = r.json()["data"]["token"]
+        _log(f"Token obtido na rota /cursos/tokens: {token}")
+        return {"status": "ok", "token": token}
+    raise HTTPException(status_code=500, detail="Falha ao obter token da unidade.")
