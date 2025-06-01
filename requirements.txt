@@ -1,5 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
+httpx[http2]
 python-dotenv
-requests
 structlog
+requests
+pydantic[email]
+python-multipart
