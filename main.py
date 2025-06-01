@@ -23,7 +23,6 @@ app.add_middleware(
 app.include_router(cursos_router, prefix="/cursos", tags=["Cursos"])
 app.include_router(matricular_router, prefix="/matricular", tags=["Matrícula"])
 app.include_router(secure_router, prefix="/secure", tags=["Token"])
-app.include_router(checkout_router, tags=["Checkout"])
 app.include_router(mp_router, prefix="/assinaturamp", tags=["Assinatura MP"])
 
 
