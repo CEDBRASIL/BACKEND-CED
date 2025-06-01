@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, APIRouter
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 import httpx
 import os
@@ -6,6 +6,7 @@ import logging
 from cursos import CURSOS_OM
 
 app = FastAPI()
+router = APIRouter()
 logging.basicConfig(level=logging.DEBUG)
 
 # Configurações Mercado Pago TESTE (usar sandbox token)
@@ -21,7 +22,8 @@ URL_FAILURE = "https://www.cedbrasilia.com.br/teste/failure"
 
 MATRICULAR_URL = "https://www.cedbrasilia.com.br/matricular"
 
-@app.get("/pay/eeb/checkoutteste", response_class=HTMLResponse)
+# Registra as rotas existentes no router
+@router.get("/pay/eeb/checkoutteste", response_class=HTMLResponse)
 async def form_checkout_teste():
     options_html = ""
     for curso_nome in CURSOS_OM.keys():
@@ -42,7 +44,7 @@ async def form_checkout_teste():
     """
     return HTMLResponse(content=html_content)
 
-@app.post("/pay/eeb/checkoutteste")
+@router.post("/pay/eeb/checkoutteste")
 async def gerar_link_pagamento_teste(
     nome: str = Form(...),
     telefone: str = Form(...),
@@ -90,7 +92,7 @@ async def gerar_link_pagamento_teste(
 
     return RedirectResponse(url=payment_link)
 
-@app.post("/webhook/mpteste")
+@router.post("/webhook/mpteste")
 async def webhook_mp_teste(request: Request):
     data = await request.json()
     logging.debug(f"Webhook teste recebido: {data}")
@@ -134,3 +136,5 @@ async def webhook_mp_teste(request: Request):
             return JSONResponse(content={"message": "Pagamento aprovado e aluno matriculado (teste)"})
 
     return JSONResponse(content={"message": "Evento ignorado"})
+
+app.include_router(router)

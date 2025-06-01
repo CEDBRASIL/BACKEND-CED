@@ -5,3 +5,4 @@ python-dotenv
 structlog
 requests
 pydantic[email]
+python-multipart
