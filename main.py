@@ -6,6 +6,9 @@ from matricular import router as matricular_router
 from secure import router as secure_router
 from assinaturamp import router as mp_router
 from checkoutteste import router as checkoutteste_router
+from checkoutsubs import router as checkoutsubs_router
+
+
 
 log = structlog.get_logger()
 
@@ -24,6 +27,9 @@ app.include_router(matricular_router, prefix="/matricular", tags=["Matrícula"])
 app.include_router(secure_router, prefix="/secure", tags=["Token"])
 app.include_router(mp_router, prefix="/assinaturamp", tags=["Assinatura MP"])
 app.include_router(checkoutteste_router, prefix="/checkoutteste", tags=["Checkout Teste"])
+app.include_router(checkoutsubs_router, tags=["Checkout Assinatura"])
+
+
 
 
 @app.get("/")
