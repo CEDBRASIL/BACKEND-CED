@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx[http2]
+python-dotenv
+structlog
+requests
+pydantic[email]
