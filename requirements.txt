@@ -1,7 +1,7 @@
-pydantic[email]
 fastapi
 uvicorn
 httpx[http2]
 python-dotenv
 structlog
 requests
+pydantic[email]

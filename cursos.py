@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter
 from typing import Dict, List
 
@@ -17,6 +18,6 @@ CURSOS_OM: Dict[str, List[int]] = {
     "Pacote Office": [160, 161, 162, 197, 201],
 }
 
-@router.get("/", summary="Lista de cursos")
+@router.get("/", summary="Lista de cursos disponíveis")
 async def listar_cursos():
     return {"cursos": CURSOS_OM}
