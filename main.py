@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
@@ -7,7 +6,7 @@ from matricular import router as matricular_router
 from secure import router as secure_router
 from checkout_api import router as checkout_router
 from matricularmercadopago import router as mp_router
-from mp import mp_router
+
 
 
 log = structlog.get_logger()
