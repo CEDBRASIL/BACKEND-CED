@@ -68,7 +68,7 @@ async def gerar_link_pagamento(dados: CheckoutIn):
         "external_reference": "CED-ASSINATURA",
         "payer": {
             "name": dados.nome,
-            "email": dados.email,  # Corrigindo para incluir o email no objeto payer
+            "payer_email": dados.email,  # Corrigindo para incluir o email no objeto payer
             "phone": {"number": dados.whatsapp}
         },
         "notification_url": NOTIF_URL,
