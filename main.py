@@ -5,7 +5,7 @@ from cursos import router as cursos_router
 from matricular import router as matricular_router
 from secure import router as secure_router
 from checkout_api import router as checkout_router
-from matricularmercadopago import router as mp_router
+from assinaturamp import router as assinatura_router
 
 
 
@@ -25,7 +25,7 @@ app.include_router(cursos_router, prefix="/cursos", tags=["Cursos"])
 app.include_router(matricular_router, prefix="/matricular", tags=["Matrícula"])
 app.include_router(secure_router, prefix="/secure", tags=["Token"])
 app.include_router(checkout_router, tags=["Checkout"])
-app.include_router(mp_router, prefix="/checkout")
+app.include_router(assinatura_router, prefix="/assinaturamp", tags=["Assinatura MP"])
 
 
 @app.get("/")
