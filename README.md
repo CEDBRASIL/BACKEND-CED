@@ -66,3 +66,7 @@ Confirme que as mensagens de boas-vindas estão sendo enviadas corretamente para
 ---
 
 **Autor**: Equipe CED
+
+# Salvar preferências do usuário para backend e frontend
+# Backend: api.cedbrasilia.com.br/
+# Frontend: www.cedbrasilia.com.br/
