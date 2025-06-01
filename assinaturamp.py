@@ -33,7 +33,7 @@ class CheckoutIn(BaseModel):
 class CheckoutOut(BaseModel):
     mp_link: AnyHttpUrl
 
-@router.post("/assinaturamp", response_model=CheckoutOut, summary="Gera link de pagamento Mercado Pago")
+@router.post("/", response_model=CheckoutOut, summary="Gera link de pagamento Mercado Pago")
 async def gerar_link_pagamento(dados: CheckoutIn):
     """
     Recebe: nome, email, whatsapp e lista de cursos.
