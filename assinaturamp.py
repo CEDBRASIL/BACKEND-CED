@@ -135,3 +135,7 @@ async def webhook_mp(evento: dict):
             raise HTTPException(500, "Falha na matrícula")
 
     return {"msg": "Aluno matriculado com sucesso"}
+
+@router.get("/assinaturamp", summary="Verifica se a rota está funcionando")
+async def teste_ativo():
+    return {"status": "Rota /assinaturamp ativa e funcionando"}
