@@ -9,7 +9,7 @@ router = APIRouter()
 logging.basicConfig(level=logging.DEBUG)
 
 # Token SANDBOX do Mercado Pago (use sua variável de ambiente)
-MP_ACCESS_TOKEN = os.getenv("MP_TEST_ACCESS_TOKEN", "TEST-SEU-TOKEN-DE-SANDBOX")
+MP_ACCESS_TOKEN = os.getenv("MP_TEST_ACCESS_TOKEN")
 MP_BASE_URL = "https://api.mercadopago.com"
 
 VALOR_ASSINATURA = 4990  # em centavos
